@@ -31,6 +31,7 @@ func (h *Handler) CLIIdler() {
 		opLog.Error(err, fmt.Sprintf("unable to get any namespaces"))
 		return
 	}
+	// loop over the namespaces
 	for _, namespace := range namespaces.Items {
 		projectAutoIdle, ok1 := namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectIdling]
 		environmentAutoIdle, ok2 := namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentIdling]
@@ -40,7 +41,7 @@ func (h *Handler) CLIIdler() {
 					WithValues("project", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName]).
 					WithValues("environment", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
 					WithValues("dry-run", h.DryRun)
-				envOpLog.Info(fmt.Sprintf("Checking namespace"))
+				envOpLog.Info(fmt.Sprintf("Checking namespace for CLI idling"))
 				h.kubernetesCLI(ctx, envOpLog, namespace)
 			} else {
 				if h.Debug {

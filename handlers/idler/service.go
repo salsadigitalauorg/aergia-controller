@@ -3,6 +3,7 @@ package idler
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -55,8 +56,28 @@ func (h *Handler) ServiceIdler() {
 					WithValues("project", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName]).
 					WithValues("environment", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
 					WithValues("dry-run", h.DryRun)
-				envOpLog.Info(fmt.Sprintf("Checking namespace"))
-				h.kubernetesServices(ctx, envOpLog, namespace, namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName])
+				envOpLog.Info(fmt.Sprintf("Checking namespace for Service idling"))
+				h.kubernetesServices(ctx, envOpLog, namespace, namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], h.PodCheckInterval, environmentType)
+			} else if environmentType == "production" {
+				EcoModeIdleMins, ok := namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EcoModeIdleMins]
+				if ok {
+					minutes, err := strconv.Atoi(EcoModeIdleMins)
+					if err != nil {
+						fmt.Println("Error converting string to int:", err)
+						return
+					}
+					envOpLog := opLog.WithValues("namespace", namespace.ObjectMeta.Name).
+						WithValues("project", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName]).
+						WithValues("environment", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
+						WithValues("dry-run", h.DryRun)
+					envOpLog.Info(fmt.Sprintf("Checking namespace for Service idling"))
+					h.kubernetesServices(ctx, envOpLog, namespace, namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], minutes, environmentType)
+				} else {
+					if h.Debug {
+						opLog.Info(fmt.Sprintf("skipping namespace %s as Eco Mode is not enabled",
+							namespace.ObjectMeta.Name))
+					}
+				}
 			} else {
 				if h.Debug {
 					opLog.Info(fmt.Sprintf("skipping namespace %s; type is %s, autoidle values are env:%s proj:%s",

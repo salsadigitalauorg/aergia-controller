@@ -48,6 +48,7 @@ service:
       operator: "in"
       values:
         - "development"
+        - "production"
   builds:
     - name: "lagoon.sh/jobType"
       operator: "in"
@@ -65,5 +66,6 @@ namespaceselectorslabels:
   projectidling: "lagoon.sh/projectAutoIdle"
   environmentidling: "lagoon.sh/environmentAutoIdle"
   environmenttype: "lagoon.sh/environmentType"
+  ecomodeidlemins: "lagoon.sh/ecoModeIdleMins"
 
 servicename: "lagoon.sh/service"

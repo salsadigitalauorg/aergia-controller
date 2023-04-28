@@ -20,7 +20,7 @@ import (
 )
 
 // kubernetesServices handles scaling deployments in kubernetes.
-func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string) {
+func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string, idleMinutes int, environmentType string) {
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Builds)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace.ObjectMeta.Name),
@@ -60,8 +60,8 @@ func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, nam
 			opLog.Error(err, fmt.Sprintf("Error getting deployments"))
 			return
 		}
-		// fmt.Println(labelRequirements)
-		// fmt.Println("deploys", len(deployments.Items))
+		// fmt.Println(labelRequirements)                 // TODO: remove
+		// fmt.Println("deploys", len(deployments.Items)) // TODO: remove
 		for _, deployment := range deployments.Items {
 			checkPods := false
 			zeroReps := new(int32)
@@ -81,27 +81,30 @@ func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, nam
 					client.InNamespace(namespace.ObjectMeta.Name),
 					client.MatchingLabels(map[string]string{h.Selectors.ServiceName: deployment.ObjectMeta.Name}),
 				})
+				// fmt.Println(listOption) // TODO: remove
 				if err := h.Client.List(ctx, pods, listOption); err != nil {
 					// if we can't get any pods for this deployment, log it and move on to the next
 					opLog.Error(err, fmt.Sprintf("Error listing pods"))
 					break
 				}
+				// fmt.Println("Pods", len(pods.Items)) // TODO: remove
 				for _, pod := range pods.Items {
 					// check if the runtime of the pod is more than our interval
 					if pod.Status.StartTime != nil {
-						hs := time.Now().Sub(pod.Status.StartTime.Time).Hours()
+						hs := time.Now().Sub(pod.Status.StartTime.Time).Minutes()
 						if h.Debug {
-							opLog.Info(fmt.Sprintf("Pod %s has been running for %d hours", pod.ObjectMeta.Name, int(hs)))
+							opLog.Info(fmt.Sprintf("Pod %s has been running for %d minutes", pod.ObjectMeta.Name, int(hs)))
 						}
-						if int(hs) >= h.PodCheckInterval {
+						if int(hs) >= idleMinutes {
 							// if it is, set the idle flag
+							opLog.Info(fmt.Sprintf("Pod %s will be idled as it has been running for more than %d minutes", pod.ObjectMeta.Name, idleMinutes))
 							idle = true
 						}
 					}
 				}
 			}
 		}
-		// we the idle flag, then proceed to check the router logs and eventually idle the environment
+		// we check the idle flag, then proceed to check the router logs and eventually idle the environment
 		if idle {
 			numHits := 0
 			if !h.Selectors.Service.SkipHitCheck {
@@ -110,11 +113,20 @@ func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, nam
 				v1api := prometheusapiv1.NewAPI(h.PrometheusClient)
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
+
+				var timeRange string
+				if environmentType == "production" {
+					timeRange = fmt.Sprintf("%dm", idleMinutes)
+				} else {
+					timeRange = h.PrometheusCheckInterval
+				}
+
 				// get the number of requests to any ingress in the exported namespace by status code
 				promQuery := fmt.Sprintf(
 					"round(sum(increase(nginx_ingress_controller_requests{exported_namespace=\"%s\"}[%s])) by (status))",
 					namespace.ObjectMeta.Name,
-					h.PrometheusCheckInterval,
+					timeRange,
+					// h.PrometheusCheckInterval,
 				)
 				result, warnings, err := v1api.Query(ctx, promQuery, time.Now())
 				if err != nil {
@@ -138,6 +150,8 @@ func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, nam
 					opLog.Info(fmt.Sprintf("Environment does not need idling"))
 					return
 				}
+			} else {
+				opLog.Info(fmt.Sprintf("Environment marked for idling, ignoring the routerlogs for hits"))
 			}
 			// if there weren't any issues patching the ingress, then proceed to scale the deployments
 			// just disregard the error, we're logging it in the patchIngres function, but if that step fails
@@ -200,9 +214,9 @@ func (h *Handler) idleDeployments(ctx context.Context, opLog logr.Logger, deploy
 }
 
 /*
-	patchIngress will patch any ingress with matching labels with the `custom-http-errors` annotation.
-	this annotation is used by the unidler to make sure that the correct information is passed to the custom backend for
-	the nginx ingress controller so that we can handle unidling of the environment properly
+patchIngress will patch any ingress with matching labels with the `custom-http-errors` annotation.
+this annotation is used by the unidler to make sure that the correct information is passed to the custom backend for
+the nginx ingress controller so that we can handle unidling of the environment properly
 */
 func (h *Handler) patchIngress(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) error {
 	if !h.Selectors.Service.SkipIngressPatch {

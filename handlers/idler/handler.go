@@ -54,6 +54,7 @@ type NamespaceSelectorsLabels struct {
 	ProjectIdling     string `json:"projectidling"`
 	EnvironmentIdling string `json:"environmentidling"`
 	EnvironmentType   string `json:"environmenttype"`
+	EcoModeIdleMins   string `json:"ecomodeidlemins"`
 }
 
 // CLI .

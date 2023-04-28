@@ -66,6 +66,8 @@ func main() {
 	var enableCLIIdler bool
 	var enableServiceIdler bool
 
+	var unidlerPort int
+
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
@@ -79,17 +81,18 @@ func main() {
 	flag.StringVar(&cliCron, "cli-idler-cron", "5,35 * * * *",
 		"The cron definition for how often to run the cli idling process.")
 	flag.StringVar(&serviceCron, "service-idler-cron", "0 */4 * * *",
-		"The cron definition for how often to run the cli idling process.")
+		"The cron definition for how often to run the service idling process.")
 	flag.StringVar(&prometheusAddress, "prometheus-endpoint", "http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090",
 		"The address for the prometheus endpoint to check against")
 	flag.StringVar(&prometheusCheckInterval, "prometheus-interval", "4h",
 		"The time range interval for how long to check prometheus for (default: 4h)")
-	flag.IntVar(&podCheckInterval, "pod-check-interval", 4,
-		"The time range interval for how long to check pod update (default: 4)")
+	flag.IntVar(&podCheckInterval, "pod-check-interval", 240,
+		"The time range interval for how long to check pod update in minutes (default: 240)")
 	flag.BoolVar(&skipHitCheck, "skip-hit-check", false,
 		"Flag to determine if the idler should check the hit backend or not. If true, this overrides what is in the selectors file.")
 	flag.BoolVar(&enableCLIIdler, "enable-cli-idler", true, "Flag to enable cli idler.")
 	flag.BoolVar(&enableServiceIdler, "enable-service-idler", true, "Flag to enable service idler.")
+	flag.IntVar(&unidlerPort, "unidler-port", 5000, "Port for the unidler service to listen on.")
 	flag.Parse()
 
 	selectorsFile = getEnv("SELECTORS_YAML_FILE", selectorsFile)
@@ -101,6 +104,7 @@ func main() {
 	enableServiceIdler = getEnvBool("ENABLE_SERVICE_IDLER", enableServiceIdler)
 	enableCLIIdler = getEnvBool("ENABLE_CLI_IDLER", enableCLIIdler)
 	podCheckInterval = getEnvInt("POD_CHECK_INTERVAL", podCheckInterval)
+	unidlerPort = getEnvInt("UNIDLER_PORT", unidlerPort)
 
 	prometheusAddress = getEnv("PROMETHEUS_ADDRESS", prometheusAddress)
 	prometheusCheckInterval = getEnv("PROMETHEUS_CHECK_INTERVAL", prometheusCheckInterval)
@@ -147,6 +151,7 @@ func main() {
 		Client:          mgr.GetClient(),
 		Log:             ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
 		RefreshInterval: refreshInterval,
+		UnidlerPort:     unidlerPort,
 		Debug:           debug,
 		RequestCount:    requestCount,
 		RequestDuration: requestDuration,

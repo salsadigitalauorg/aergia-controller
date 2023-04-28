@@ -33,6 +33,7 @@ type Client struct {
 	Client          ctrlClient.Client
 	Log             logr.Logger
 	RefreshInterval int
+	UnidlerPort     int
 	Debug           bool
 	RequestCount    *prometheus.CounterVec
 	RequestDuration *prometheus.HistogramVec
@@ -98,7 +99,7 @@ func Run(h *Client, setupLog logr.Logger) {
 	http.Handle("/", r)
 
 	httpServer := &http.Server{
-		Addr:    ":5000",
+		Addr:    fmt.Sprintf(":%d", h.UnidlerPort),
 		Handler: r,
 	}
 	err := httpServer.ListenAndServe()
